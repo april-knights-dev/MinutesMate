@@ -56,9 +56,11 @@ def handle_shortcut(ack, body, logger):
         # typeがfileである要素からfile_id, file_typeを取得する
         file_id = None
         file_type = None
+        file_name = None
         for element in elements:
             file_id = element["id"]
             file_type = element["filetype"]
+            file_name = element["name"]
             break
 
         # ファイル情報を取得する
@@ -120,7 +122,7 @@ def handle_shortcut(ack, body, logger):
 
                 print(final_text)
 
-                upload_to_slack(channel, full_text, filepath, final_text, message_id)
+                upload_to_slack(channel, full_text, file_name, final_text, message_id)
 
             else:
                 return
