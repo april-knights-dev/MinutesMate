@@ -183,14 +183,16 @@ def upload_to_slack(channel: str, transcript: str, title: str, summary: str = No
     f.close()
 
     try:
-        client.files_upload_v2(
-            channels=channel,
-            thread_ts=thread_ts,
-            file="temp.txt",
-            filetype="text",
-            title=title + ".txt",
-            initial_comment=summary
-        )
+        with open("temp.txt", "rb") as f:
+            client.files_upload_v2(
+                channels=channel,
+                thread_ts=thread_ts,
+                file=f,
+                filetype="text",
+                title=title + ".txt",
+                initial_comment=summary
+            )
+        f.close()
     except Exception as e:
         print("Error uploading file: {}".format(e))
     finally:
