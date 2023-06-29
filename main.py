@@ -187,6 +187,7 @@ def upload_to_slack(channel: str, transcript: str, title: str, summary: str = No
             channels=channel,
             thread_ts=thread_ts,
             file="temp.txt",
+            filetype="text",
             title=title + ".txt",
             initial_comment=summary
         )
