@@ -16,20 +16,37 @@ load_dotenv(dotenv_path)
 
 # ボットトークンとソケットモードハンドラーを使ってアプリを初期化します
 app = App(token=os.environ.get("SLACK_BOT_TOKEN"),
-          signing_secret=os.environ.get("SLACK_SIGNING_SECRET"),
-          )
+                signing_secret=os.environ.get("SLACK_SIGNING_SECRET"))
+
+#
+# Socket Mode
+#
+from slack_bolt.adapter.socket_mode import SocketModeHandler
+
+socket_handler = SocketModeHandler(app, os.environ["SLACK_APP_TOKEN"])
+# Use connect() method as start() blocks the current thread
+socket_handler.connect()
+
+
 client = WebClient(os.environ["SLACK_BOT_TOKEN"])
 openai.api_key = os.environ["OPENAI_API_KEY"]
+
+
+# イベント API
+@app.message("hello")
+def handle_messge_evnts(message, say):
+    say(f"こんにちは <@{message['user']}> さん！")
 
 
 # メッセージショートカットのハンドラー
 @app.shortcut("create_summary")
 def handle_shortcut(ack, body, logger):
-    try:
-        ack()
-        logger.info(body)
+    ack()
+    logger.info(body)
 
-        message_id = body['message']['ts']
+    message_id = body['message']['ts']
+
+    try:
 
         # このメッセージIDからファイルを取得する
         response = client.conversations_replies(
@@ -96,7 +113,7 @@ def handle_shortcut(ack, body, logger):
                         model="gpt-3.5-turbo-16k-0613",
                         messages=[message],
                         max_tokens=16000,
-                        temperature=0.1
+                        temperature=0.9
                     )
                     generated_text = response['choices'][0]['message']['content']
                     final_text += generated_text
@@ -110,7 +127,10 @@ def handle_shortcut(ack, body, logger):
 
     except Exception as e:
         print("Error:", e)
-
+        # errorをスレッドに投稿する
+        client.chat_postMessage(channel=channel, text=f"エラーが発生しました。\n```{e}```", thread_ts=message_id)
+    finally:
+        os.remove(filepath)
 
 def whisper(filepath):
     print(filepath)
@@ -118,12 +138,18 @@ def whisper(filepath):
         output = "ファイルサイズオーバー。ファイルサイズは26MBにしてください。"
         return output
     else:
-        language = "ja"
-        audio_file = open(filepath, "rb")
-        transcript = openai.Audio.transcribe(
-            "whisper-1", audio_file, language=language)
-        os.remove(filepath)
-        return transcript
+        try:
+            language = "ja"
+            with open(filepath, "rb") as audio_file:
+                transcript = openai.Audio.transcribe(
+                    "whisper-1", audio_file, language=language)
+            audio_file.close()
+        except Exception as e:
+            print(e)
+            transcript.text = "書き起こしに失敗しました。"
+        finally:
+            return transcript
+
 
 def download_from_slack(download_url: str, auth: str, filetype: str) -> str:
     """Slackから音声ファイルダウンロードして保存し、保存したパスを返す。
@@ -144,6 +170,7 @@ def download_from_slack(download_url: str, auth: str, filetype: str) -> str:
     with open(filename, 'wb') as f:
         # ファイルを保存する
         f.write(r.content)
+    f.close()
     return filename
 
 
@@ -151,6 +178,7 @@ def upload_to_slack(channel: str, transcript: str, title: str, summary: str = No
     # transcriptをtemp.textファイルに書き込む
     with open("temp.txt", "w") as f:
         f.write(transcript)
+    f.close()
 
     try:
         client.files_upload_v2(
@@ -166,12 +194,6 @@ def upload_to_slack(channel: str, transcript: str, title: str, summary: str = No
         # temp.txtを削除
         os.remove("temp.txt")
 
-
-@app.event("message")
-def handle_message_events(body, logger):
-    logger.info(body)
-
-
 # アプリを起動します
 if __name__ == "__main__":
-    SocketModeHandler(app, os.environ["SLACK_APP_TOKEN"]).start()
+    socket_handler.start()
