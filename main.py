@@ -1,5 +1,6 @@
 import io
 import os
+import secrets
 from datetime import datetime
 from os.path import dirname, join
 
@@ -93,6 +94,7 @@ def handle_shortcut(ack, body, logger):
                     if i == 0:
                         messages.append({"role": "system", "content": system_template})
                         messages.append({"role": "user", "content": user_first_template})
+                        messages.append({"role": "assistant", "content": "次の入力を待っています"})
 
                     messages.append({"role": "user", "content": segment})
 
@@ -146,7 +148,10 @@ def download_from_slack(download_url: str, auth: str, filetype: str) -> str:
     print(download_url)
 
     # download_urlからファイルをローカルにダウンロード
-    filename = 'temp.'+filetype
+    # 同時実行に備えてファイル名はランダムにする
+    random = secrets.token_hex(8)
+    filename = f"{random}.{filetype}"
+
     headers = {'Authorization': 'Bearer '+os.environ.get("SLACK_USER_TOKEN")}
     r = requests.get(download_url, stream=True, headers=headers)
     with open(filename, 'wb') as f:
