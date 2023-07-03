@@ -69,7 +69,7 @@ def handle_shortcut(ack, body, logger):
                 # 途中経過をスレッドに投稿する
                 upload_to_slack(channel, output, filepath, "書き起こしが終わりました。要約はもう少し待ってね", message_id)
 
-                # chatgpt apiを使ってサマリーする
+                 # chatgpt apiを使ってサマリーする
                 system_template = """会議の書き起こしが渡されます。
                 この会議のサマリーをMarkdown形式で作成してください。
                 サマリーは、以下のような形式で書いてください。
@@ -85,7 +85,7 @@ def handle_shortcut(ack, body, logger):
                 # system_templateのトークンをテキストから計算
                 system_template_token_count = len(system_template.split())
                 # system_template_token_countを足して10000になるように分割
-                split_count = 10000 - system_template_token_count
+                split_count = 2000 - system_template_token_count
                 segments = [full_text[i:i+split_count]
                             for i in range(0, len(full_text), split_count)]
                 messages = []
@@ -96,7 +96,7 @@ def handle_shortcut(ack, body, logger):
 
                     messages.append({"role": "user", "content": segment})
 
-                    if i == len(segments):
+                    if i == len(segments) - 1:
                         messages.append({"role": "user", "content": "作業してください"})
                     else:
                         messages.append({"role": "assistant", "content": "次の入力を待っています"})
@@ -105,16 +105,14 @@ def handle_shortcut(ack, body, logger):
                 response = openai.ChatCompletion.create(
                     model="gpt-3.5-turbo-16k-0613",
                     messages=messages,
-                    max_tokens=16000,
-                    temperature=0.1
+                    temperature=0.7
                 )
                 generated_text = response['choices'][0]['message']['content']
                 final_text += generated_text
 
                 print(final_text)
 
-                upload_to_slack(channel, final_text, "", final_text, message_id)
-
+                upload_to_slack(channel, final_text, "", "要約が終わりました。", message_id)
             else:
                 return
 
@@ -179,8 +177,60 @@ def upload_to_slack(channel: str, transcript: str, title: str, summary: str = No
 
 @app.event("message")
 def handle_message_events(body, logger):
-    logger.info(body)
+    try:
+        logger.info(body)
 
+        message_id = body['event']['ts']
+        full_text = body['event']['text']
+        channel = body['event']['channel']
+
+        # chatgpt apiを使ってサマリーする
+        system_template = """会議の書き起こしが渡されます。
+        この会議のサマリーをMarkdown形式で作成してください。
+        サマリーは、以下のような形式で書いてください。
+
+        - 会議の目的
+        - 会議の内容
+        - 会議の結果
+        - 次回の会議までのタスク
+
+        """
+        user_first_template = """これから文章を渡すので、その内容を要約してください。ただし文章は分割してあるので「作業してください」と伝えるまで、あなたは作業を始めず、代わりに「次の入力を待っています」と回答してください。"""
+        # system_templateのトークンをテキストから計算
+        system_template_token_count = len(system_template.split())
+        # system_template_token_countを足して10000になるように分割
+        split_count = 2000 - system_template_token_count
+        segments = [full_text[i:i+split_count]
+                    for i in range(0, len(full_text), split_count)]
+        messages = []
+        for i, segment in enumerate(segments):
+            if i == 0:
+                messages.append({"role": "system", "content": system_template})
+                messages.append({"role": "user", "content": user_first_template})
+
+            messages.append({"role": "user", "content": segment})
+
+            if i == len(segments) - 1:
+                messages.append({"role": "user", "content": "作業してください"})
+            else:
+                messages.append({"role": "assistant", "content": "次の入力を待っています"})
+
+        final_text = ""
+        response = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo-16k-0613",
+            messages=messages,
+            temperature=0.7
+        )
+        generated_text = response['choices'][0]['message']['content']
+        final_text += generated_text
+
+        print(final_text)
+
+        upload_to_slack(channel, final_text, "", "要約が終わりました。", message_id)
+
+
+    except Exception as e:
+        print("Error:", e)
 
 # アプリを起動します
 if __name__ == "__main__":
