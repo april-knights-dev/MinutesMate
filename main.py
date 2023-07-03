@@ -16,37 +16,20 @@ load_dotenv(dotenv_path)
 
 # ボットトークンとソケットモードハンドラーを使ってアプリを初期化します
 app = App(token=os.environ.get("SLACK_BOT_TOKEN"),
-                signing_secret=os.environ.get("SLACK_SIGNING_SECRET"))
-
-#
-# Socket Mode
-#
-from slack_bolt.adapter.socket_mode import SocketModeHandler
-
-socket_handler = SocketModeHandler(app, os.environ["SLACK_APP_TOKEN"])
-# Use connect() method as start() blocks the current thread
-socket_handler.connect()
-
-
+          signing_secret=os.environ.get("SLACK_SIGNING_SECRET"),
+          )
 client = WebClient(os.environ["SLACK_BOT_TOKEN"])
 openai.api_key = os.environ["OPENAI_API_KEY"]
-
-
-# イベント API
-@app.message("hello")
-def handle_messge_evnts(message, say):
-    say(f"こんにちは <@{message['user']}> さん！")
 
 
 # メッセージショートカットのハンドラー
 @app.shortcut("create_summary")
 def handle_shortcut(ack, body, logger):
-    ack()
-    logger.info(body)
-
-    message_id = body['message']['ts']
-
     try:
+        ack()
+        logger.info(body)
+
+        message_id = body['message']['ts']
 
         # このメッセージIDからファイルを取得する
         response = client.conversations_replies(
@@ -56,11 +39,9 @@ def handle_shortcut(ack, body, logger):
         # typeがfileである要素からfile_id, file_typeを取得する
         file_id = None
         file_type = None
-        file_name = None
         for element in elements:
             file_id = element["id"]
             file_type = element["filetype"]
-            file_name = element["name"]
             break
 
         # ファイル情報を取得する
@@ -86,53 +67,60 @@ def handle_shortcut(ack, body, logger):
 
                 print(output)
                 # 途中経過をスレッドに投稿する
-                client.chat_postMessage(channel=channel, text="書き起こしが終わりました。もう少し待ってね", thread_ts=message_id)
+                upload_to_slack(channel, output, filepath, "書き起こしが終わりました。要約はもう少し待ってね", message_id)
 
                 # chatgpt apiを使ってサマリーする
                 system_template = """会議の書き起こしが渡されます。
-                この会議のサマリーをMarkdown形式で作成してください。サマリーは、以下のような形式で書いてください。
+                この会議のサマリーをMarkdown形式で作成してください。
+                サマリーは、以下のような形式で書いてください。
 
                 - 会議の目的
                 - 会議の内容
                 - 会議の結果
                 - 次回の会議までのタスク
+
                 """
+                user_first_template = """これから文章を渡すので、その内容を要約してください。ただし文章は分割してあるので「作業してください」と伝えるまで、あなたは作業を始めず、代わりに「次の入力を待っています」と回答してください。"""
                 full_text = transcript.text  # テキスト全体を取得
-                # system_tempalteのトークンを計算
+                # system_templateのトークンをテキストから計算
                 system_template_token_count = len(system_template.split())
                 # system_template_token_countを足して10000になるように分割
-                segments = [full_text[i:i+10000-system_template_token_count]
-                            for i in range(0, len(full_text), 10000-system_template_token_count)]
+                split_count = 10000 - system_template_token_count
+                segments = [full_text[i:i+split_count]
+                            for i in range(0, len(full_text), split_count)]
                 messages = []
                 for i, segment in enumerate(segments):
                     if i == 0:
                         messages.append({"role": "system", "content": system_template})
+                        messages.append({"role": "user", "content": user_first_template})
+
                     messages.append({"role": "user", "content": segment})
 
+                    if i == len(segments):
+                        messages.append({"role": "user", "content": "作業してください"})
+                    else:
+                        messages.append({"role": "assistant", "content": "次の入力を待っています"})
+
                 final_text = ""
-                for message in messages:
-                    response = openai.ChatCompletion.create(
-                        model="gpt-3.5-turbo-16k-0613",
-                        messages=[message],
-                        max_tokens=16000,
-                        temperature=0.9
-                    )
-                    generated_text = response['choices'][0]['message']['content']
-                    final_text += generated_text
+                response = openai.ChatCompletion.create(
+                    model="gpt-3.5-turbo-16k-0613",
+                    messages=messages,
+                    max_tokens=16000,
+                    temperature=0.1
+                )
+                generated_text = response['choices'][0]['message']['content']
+                final_text += generated_text
 
                 print(final_text)
 
-                upload_to_slack(channel, full_text, file_name, final_text, message_id)
+                upload_to_slack(channel, final_text, "", final_text, message_id)
 
             else:
                 return
 
     except Exception as e:
         print("Error:", e)
-        # errorをスレッドに投稿する
-        client.chat_postMessage(channel=channel, text=f"エラーが発生しました。\n```{e}```", thread_ts=message_id)
-    finally:
-        os.remove(filepath)
+
 
 def whisper(filepath):
     print(filepath)
@@ -140,18 +128,12 @@ def whisper(filepath):
         output = "ファイルサイズオーバー。ファイルサイズは26MBにしてください。"
         return output
     else:
-        try:
-            language = "ja"
-            with open(filepath, "rb") as audio_file:
-                transcript = openai.Audio.transcribe(
-                    "whisper-1", audio_file, language=language)
-            audio_file.close()
-        except Exception as e:
-            print(e)
-            transcript.text = "書き起こしに失敗しました。"
-        finally:
-            return transcript
-
+        language = "ja"
+        audio_file = open(filepath, "rb")
+        transcript = openai.Audio.transcribe(
+            "whisper-1", audio_file, language=language)
+        os.remove(filepath)
+        return transcript
 
 def download_from_slack(download_url: str, auth: str, filetype: str) -> str:
     """Slackから音声ファイルダウンロードして保存し、保存したパスを返す。
@@ -172,7 +154,6 @@ def download_from_slack(download_url: str, auth: str, filetype: str) -> str:
     with open(filename, 'wb') as f:
         # ファイルを保存する
         f.write(r.content)
-    f.close()
     return filename
 
 
@@ -180,25 +161,27 @@ def upload_to_slack(channel: str, transcript: str, title: str, summary: str = No
     # transcriptをtemp.textファイルに書き込む
     with open("temp.txt", "w") as f:
         f.write(transcript)
-    f.close()
 
     try:
-        with open("temp.txt", "rb") as f:
-            client.files_upload_v2(
-                channels=channel,
-                thread_ts=thread_ts,
-                file=f,
-                filetype="text",
-                title=title + ".txt",
-                initial_comment=summary
-            )
-        f.close()
+        client.files_upload_v2(
+            channels=channel,
+            thread_ts=thread_ts,
+            file="temp.txt",
+            title=title + ".txt",
+            initial_comment=summary
+        )
     except Exception as e:
         print("Error uploading file: {}".format(e))
     finally:
         # temp.txtを削除
         os.remove("temp.txt")
 
+
+@app.event("message")
+def handle_message_events(body, logger):
+    logger.info(body)
+
+
 # アプリを起動します
 if __name__ == "__main__":
-    socket_handler.start()
+    SocketModeHandler(app, os.environ["SLACK_APP_TOKEN"]).start()
