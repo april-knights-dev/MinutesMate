@@ -81,9 +81,9 @@ def handle_shortcut(ack, body, logger):
                 full_text = transcript.text  # テキスト全体を取得
                 # system_tempalteのトークンを計算
                 system_template_token_count = len(system_template.split())
-                # system_template_token_countを足して16000になるように分割
-                segments = [full_text[i:i+16000-system_template_token_count]
-                            for i in range(0, len(full_text), 16000-system_template_token_count)]
+                # system_template_token_countを足して10000になるように分割
+                segments = [full_text[i:i+10000-system_template_token_count]
+                            for i in range(0, len(full_text), 10000-system_template_token_count)]
                 messages = []
                 for i, segment in enumerate(segments):
                     if i == 0:
