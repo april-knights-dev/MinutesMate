@@ -86,7 +86,7 @@ def handle_shortcut(ack, body, logger):
                 # system_templateのトークンをテキストから計算
                 system_template_token_count = len(system_template.split())
                 # system_template_token_countを足して10000になるように分割
-                split_count = 2000 - system_template_token_count
+                split_count = 8192 - system_template_token_count
                 segments = [full_text[i:i+split_count]
                             for i in range(0, len(full_text), split_count)]
                 messages = []
@@ -105,9 +105,9 @@ def handle_shortcut(ack, body, logger):
 
                 final_text = ""
                 response = openai.ChatCompletion.create(
-                    model="gpt4-32K",
+                    model="gpt4",
                     messages=messages,
-                    temperature=0.7
+                    temperature=0.5
                 )
                 generated_text = response['choices'][0]['message']['content']
                 final_text += generated_text
