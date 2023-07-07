@@ -105,7 +105,7 @@ def handle_shortcut(ack, body, logger):
 
                 final_text = ""
                 response = openai.ChatCompletion.create(
-                    model="gpt4",
+                    model="gpt4-32K",
                     messages=messages,
                     temperature=0.7
                 )
