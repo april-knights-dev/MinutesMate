@@ -1,6 +1,7 @@
 import io
 import os
 import secrets
+import time
 from datetime import datetime
 from os.path import dirname, join
 
@@ -70,7 +71,7 @@ def handle_shortcut(ack, body, logger):
                 # 途中経過をスレッドに投稿する
                 upload_to_slack(channel, output, filepath, "書き起こしが終わりました。要約はもう少し待ってね", message_id)
 
-                 # chatgpt apiを使ってサマリーする
+                # chatgpt apiを使ってサマリーする
                 system_template = """会議の書き起こしが渡されます。
                 この会議のサマリーをMarkdown形式で作成してください。
                 サマリーは、以下のような形式で書いてください。
@@ -104,23 +105,50 @@ def handle_shortcut(ack, body, logger):
                         messages.append({"role": "assistant", "content": "次の入力を待っています"})
 
                 final_text = ""
-                response = openai.ChatCompletion.create(
-                    model="gpt-4-0613",
-                    messages=messages,
-                    temperature=0.5
-                )
-                generated_text = response['choices'][0]['message']['content']
-                final_text += generated_text
+                # try_count回だけリトライする
+                try_count = 3
+                for i in range(try_count):
+                    model = "gpt-4-0613"
+                    if i > 2:
+                        model = "gpt-3.5-turbo-16k"
+                        sendMessage(channel, "gpt-4-0613が使えないのでgpt-3.5-turbo-16kを使います。", message_id)
+                    try:
+                        response = openai.ChatCompletion.create(
+                            model=model,
+                            messages=messages,
+                            temperature=0.5,
+                            timeout = 60
+                        )
 
-                print(final_text)
+                        generated_text = response['choices'][0]['message']['content']
+                        final_text += generated_text
 
-                upload_to_slack(channel, final_text, "", "要約が終わりました。", message_id)
+                        print(final_text)
+
+                        upload_to_slack(channel, final_text, "", "要約が終わりました。", message_id)
+                        # uploadにうまくいったらループを抜ける
+                        break
+                    except openai.error.APIError:
+                        print("APIError")
+                        time.sleep(1)    # このエラーは1秒待機で十分安定
+                    except openai.error.InvalidRequestError:
+                        pass     # 待機不要
+                    except (openai.error.RateLimitError,
+                            openai.error.APIConnectionError):
+                        sendMessage(channel, "RateLimitError: 10秒待機してリトライします。", message_id)
+                        time.sleep(10)    # 要注意。ある程度待った方が良い。
+                    except Exception as e:
+                        print("Error:", e)
+                        sendMessage(channel, e, message_id)
+                sendMessage(channel, "処理を終了します。(これ以上リトライしません。うまくいってない場合はもう一度実行してください。)", message_id)
             else:
                 return
 
     except Exception as e:
         print("Error:", e)
 
+def sendMessage(channel: str, message: str, thread_ts: str = None):
+    client.chat_postMessage(channel=channel, text=message, thread_ts=thread_ts)
 
 def whisper(filepath):
     print(filepath)
