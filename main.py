@@ -109,7 +109,7 @@ def handle_shortcut(ack, body, logger):
                 try_count = 3
                 for i in range(try_count):
                     model = "gpt-4-0613"
-                    if i > 2:
+                    if i > 1:
                         model = "gpt-3.5-turbo-16k"
                         sendMessage(channel, "gpt-4-0613が使えないのでgpt-3.5-turbo-16kを使います。", message_id)
                     try:
