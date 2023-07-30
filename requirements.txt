@@ -9,3 +9,6 @@ idna
 certifi
 urllib3
 secrets
+moviepy
+pydub
+ffmpeg
