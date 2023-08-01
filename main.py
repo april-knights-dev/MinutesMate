@@ -199,7 +199,7 @@ def create_summary(file_id, file_type, file_path, channel, message_id):
     # try_count回だけリトライする
     try_count = 3
     for i in range(try_count):
-        model = "gpt-3.5-turbo-16k"
+        model = "gpt-4-0613"
         if i > 1:
             model = "gpt-3.5-turbo-16k"
             sendMessage(
