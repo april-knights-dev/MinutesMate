@@ -178,13 +178,21 @@ def create_summary(file_id, file_type, file_path, channel, message_id):
                     "書き起こし&要約が終わりました。議事録はもう少し待ってね", message_id)
 
     # chatgpt apiを使ってサマリーする
-    prompt = """あなたは、プロの議事録作成者です。
+    system_template = """会議の書き起こしが渡されます。
+        この会議のサマリーをMarkdown形式で作成してください。
+        サマリーは、以下のような形式で書いてください。
+
+        - 会議の目的
+        - 会議の内容
+        - 会議の結果
+        - 次回の会議までのタスク
+
+        """
+    prompt = """
     以下の制約条件、内容を元に要点をまとめ、議事録を作成してください。
 
     # 制約条件
-    ・要点をまとめ、簡潔に書いて下さい。
     ・誤字・脱字があるため、話の内容を予測して置き換えてください。
-    ・見やすいフォーマットにしてください。
     ・No repeat, no remarks, only results, in Japanese
     # 内容
     """ + pre_summary
@@ -201,6 +209,7 @@ def create_summary(file_id, file_type, file_path, channel, message_id):
             response = openai.ChatCompletion.create(
                 model=model,
                 messages=[
+                    {'role': 'system', 'content': system_template},
                     {'role': 'user', 'content': prompt}
                 ],
                 temperature=0.0,
