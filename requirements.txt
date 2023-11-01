@@ -1,6 +1,6 @@
 load_dotenv
 requests
-slack-bolt
+slack_bolt
 openai
 Flask>1
 slackeventsapi

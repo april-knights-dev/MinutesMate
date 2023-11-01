@@ -107,7 +107,6 @@ def create_summary(file_id, file_type, file_path, channel, message_id):
         channel=channel, text="書き起こしを開始します。", thread_ts=message_id)
     progress_message_ts = post_response.data['ts']
 
-
     # mp3ファイルを分割する
     output_folder = "./output/" + message_id
     # outputフォルダが無ければ作る
@@ -116,7 +115,8 @@ def create_summary(file_id, file_type, file_path, channel, message_id):
             os.mkdir("./output")
         os.mkdir(output_folder)
     interval_ms = 480_000  # 60秒 = 60_000ミリ秒
-    chat_response = client.chat_update( channel=channel, ts=progress_message_ts, text="音声ファイルを分割します。" )
+    chat_response = client.chat_update(
+        channel=channel, ts=progress_message_ts, text="音声ファイルを分割します。")
     progress_message_ts = chat_response.data['ts']
     mp3_file_path_list = split_audio(file_path, interval_ms, output_folder)
 
@@ -124,7 +124,8 @@ def create_summary(file_id, file_type, file_path, channel, message_id):
     transcript_count = 0
     transcription_total_count = len(mp3_file_path_list)
     for mp3_file_path in mp3_file_path_list:
-        chat_response = client.chat_update( channel=channel, ts=progress_message_ts, text="書き起こしを行っています。" + str(transcript_count) + "/" + str(transcription_total_count) + "回目" )
+        chat_response = client.chat_update(channel=channel, ts=progress_message_ts, text="書き起こしを行っています。" + str(
+            transcript_count) + "/" + str(transcription_total_count) + "回目")
         progress_message_ts = chat_response.data['ts']
         transcription = transcribe_audio(mp3_file_path)
         transcription_list.append(transcription)
@@ -135,9 +136,9 @@ def create_summary(file_id, file_type, file_path, channel, message_id):
     count = 0
     total_count = len(transcription_list)
     chat_response = client.chat_update(channel=channel, text="書き起こしを終了しました。これから要約します。要約は"
-                            + str(total_count)
-                            + "回に分けておこなうため、"
-                            + str(total_count) + "分ほどかかります。", ts=progress_message_ts)
+                                       + str(total_count)
+                                       + "回に分けておこなうため、"
+                                       + str(total_count) + "分ほどかかります。", ts=progress_message_ts)
     progress_message_ts = chat_response.data['ts']
 
     for transcription_part in transcription_list:
@@ -165,10 +166,10 @@ def create_summary(file_id, file_type, file_path, channel, message_id):
         # 分割した回数のうちどのぐらい終わったかをslackに通知する
         count += 1
         chat_response = client.chat_update(channel=channel, text="要約作業が"
-                                + str(count)
-                                + "回終了しました。あと"
-                                + str(total_count - count)
-                                + "回です。", ts=progress_message_ts)
+                                           + str(count)
+                                           + "回終了しました。あと"
+                                           + str(total_count - count)
+                                           + "回です。", ts=progress_message_ts)
         progress_message_ts = chat_response.data['ts']
         if total_count - count >= 1:
             time.sleep(60)
@@ -262,7 +263,7 @@ def download_from_slack(download_url: str, auth: str, filetype: str, message_id)
     random = secrets.token_hex(8)
     filename = f"{random}.{filetype}"
 
-    headers = {'Authorization': 'Bearer '+os.environ.get("SLACK_USER_TOKEN")}
+    headers = {'Authorization': 'Bearer '+os.environ.get("SLACK_BOT_TOKEN")}
     r = requests.get(download_url, stream=True, headers=headers)
     with open(download_folder + "/" + filename, 'wb') as f:
         # ファイルを保存する
@@ -349,7 +350,7 @@ def remove_directory_contents(directory):
     directory = os.path.abspath(directory)
     # directoryの中身のファイルリストを作成する
     file_list = os.listdir("." + directory)
-    
+
     # ファイルを削除する
     for file in file_list:
         file_path = os.path.join(directory, file)
@@ -359,7 +360,7 @@ def remove_directory_contents(directory):
     os.rmdir("." + directory)
 
 
-@app.event("message")
+# @app.event("message")
 def handle_message_events(body, logger):
     try:
         logger.info(body)
